@@ -3,7 +3,7 @@ import { Bot } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/ApiService';
-import { API_CONFIG } from '../config/api';
+import { API_CONFIG, getAvatarUrl } from '../config/api';
 import webSocketService from '../services/WebSocketService';
 import cloudinaryService from '../services/CloudinaryService';
 import { FileText } from 'lucide-react';
@@ -33,7 +33,6 @@ const ChatMessages = ({ selectedConversation }) => {
     try {
       const result = await ApiService.getMessages(conversationId, pageNum, MESSAGES_PER_PAGE);
       const newMessages = result.data || [];
-      console.log(`📥 Fetched ${newMessages.length} messages for page ${pageNum}:`, newMessages);
       
       // Process messages to create attachment objects from MessageText URLs
       const processedMessages = newMessages.map(message => {
@@ -58,7 +57,7 @@ const ChatMessages = ({ selectedConversation }) => {
           }
         }
         
-                  return {
+        return {
             id: message.messageId || message.id,
             senderId: message.userId || message.senderId,
             originalText: messageContent,
@@ -98,7 +97,6 @@ const ChatMessages = ({ selectedConversation }) => {
       setHasMore(newMessages.length === MESSAGES_PER_PAGE);
       setPage(pageNum);
     } catch (error) {
-      console.error('❌ Error fetching messages:', error);
       setError('Error fetching messages');
     } finally {
       setIsLoadingMore(false);
@@ -121,14 +119,12 @@ const ChatMessages = ({ selectedConversation }) => {
     
     // When scroll reaches top, load more messages
     if (scrollTop === 0) {
-      console.log('🔄 Scrolled to top, loading more messages...');
       loadMoreMessages();
     }
   }, [loadMoreMessages, isLoadingMore, hasMore]);
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((messageData) => {
-    console.log('ChatMessages: Received WebSocket message:', messageData);
     
     // Check if this is a new message or an update to existing message
     const messageId = messageData.messageId || messageData.id;
@@ -139,7 +135,6 @@ const ChatMessages = ({ selectedConversation }) => {
       
       if (existingMessageIndex !== -1) {
         // Update existing message (e.g., add translation)
-        console.log('🔄 Updating existing message with translation:', messageData);
         const updatedMessages = [...prev];
         updatedMessages[existingMessageIndex] = {
           ...updatedMessages[existingMessageIndex],
@@ -150,7 +145,6 @@ const ChatMessages = ({ selectedConversation }) => {
         return updatedMessages;
       } else {
         // Add new message
-        console.log('➕ Adding new message:', messageData);
         
         // Parse message content for attachments
         let messageContent = messageData.messageText || messageData.MessageText || messageData.originalText || '';
@@ -201,7 +195,6 @@ const ChatMessages = ({ selectedConversation }) => {
   useEffect(() => {
     if (selectedConversation) {
       const conversationId = selectedConversation.conversationId || selectedConversation.id;
-      console.log('🔄 Conversation changed, fetching messages for:', conversationId);
       
       // Reset state
       setMessages([]);
@@ -218,7 +211,6 @@ const ChatMessages = ({ selectedConversation }) => {
   useEffect(() => {
     if (selectedConversation && webSocketService.connected) {
       const conversationId = selectedConversation.conversationId || selectedConversation.id;
-      console.log('🔌 Subscribing to WebSocket for conversation:', conversationId);
       
       // Subscribe to conversation topic
       const subscription = webSocketService.subscribeToConversation(conversationId, handleWebSocketMessage);
@@ -226,7 +218,6 @@ const ChatMessages = ({ selectedConversation }) => {
       
       return () => {
         if (subscription) {
-          console.log('🔌 Unsubscribing from WebSocket for conversation:', conversationId);
           subscription.unsubscribe();
         }
       };
@@ -238,9 +229,7 @@ const ChatMessages = ({ selectedConversation }) => {
     if (messages.length > 0 && !isLoading && page === 0) {
       // Wait for DOM to update, then scroll to bottom
       // This only happens on initial load, not when loading more messages
-      console.log('🚀 Initial load complete, messages count:', messages.length, 'page:', page);
       setTimeout(() => {
-        console.log('🚀 Initial load complete, scrolling to bottom...');
     scrollToBottom();
       }, 100);
     }
@@ -248,17 +237,13 @@ const ChatMessages = ({ selectedConversation }) => {
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
-      console.log('📱 Attempting to scroll to bottom...');
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      console.log('📱 Scrolled to bottom');
       
       // Also try to scroll the container to bottom as backup
       if (chatContainerRef.current) {
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        console.log('📱 Container scrolled to bottom as backup');
       }
     } else {
-      console.log('❌ messagesEndRef.current is null');
     }
   };
 
@@ -319,7 +304,7 @@ const ChatMessages = ({ selectedConversation }) => {
     
     // Nếu là hôm nay, chỉ hiển thị giờ
     if (diffInHours < 24 && date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     
     // Nếu là hôm qua
@@ -341,6 +326,49 @@ const ChatMessages = ({ selectedConversation }) => {
       month: '2-digit', 
       year: 'numeric' 
     }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Function to format date separator (like Messenger)
+  const formatDateSeparator = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    
+    // Nếu là hôm nay
+    if (date.toDateString() === now.toDateString()) {
+      return 'Hôm nay';
+    }
+    
+    // Nếu là hôm qua
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Hôm qua';
+    }
+    
+    // Nếu là trong tuần này
+    const diffInDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    if (diffInDays < 7) {
+      const weekdays = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+      return weekdays[date.getDay()];
+    }
+    
+    // Nếu là lâu hơn, hiển thị ngày tháng đầy đủ
+    return date.toLocaleDateString('vi-VN', { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  };
+
+  // Function to check if we need to show date separator
+  const shouldShowDateSeparator = (currentMessage, previousMessage) => {
+    if (!previousMessage) return true;
+    
+    const currentDate = new Date(currentMessage.timestamp);
+    const previousDate = new Date(previousMessage.timestamp);
+    
+    return currentDate.toDateString() !== previousDate.toDateString();
   };
 
   const getSenderName = (senderId) => {
@@ -379,13 +407,13 @@ const ChatMessages = ({ selectedConversation }) => {
         p.userId === senderId || p.id === senderId
       );
       if (participant?.avatarUrl) {
-        return participant.avatarUrl;
+        return getAvatarUrl(participant.avatarUrl, 'user');
       }
     }
     
     // Fallback to current user if it's their message
     if (senderId === currentUser?.id || senderId === currentUser?.userId) {
-      return currentUser.avatarUrl || currentUser.avatar || '/default-avatar.svg';
+      return getAvatarUrl(currentUser.avatarUrl || currentUser.avatar, 'user');
     }
     
     // Try to get from userProfiles if available
@@ -394,28 +422,46 @@ const ChatMessages = ({ selectedConversation }) => {
         p.userId === senderId
       );
       if (userProfile?.avatarUrl) {
-        return userProfile.avatarUrl;
+        return getAvatarUrl(userProfile.avatarUrl, 'user');
       }
     }
     
-    return '/default-avatar.svg';
+    return getAvatarUrl(null, 'user');
   };
 
   // Render attachment content based on type
   const renderAttachment = (attachment) => {
     if (!attachment) return null;
-
+    
     switch (attachment.type) {
       case 'IMAGE':
         return (
-          <div className="relative group">
+          <div className="relative inline-block">
             <img
               src={attachment.url}
-              alt=""
-              className="max-w-full max-h-96 object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm"
+              alt="Image attachment"
+              className="max-w-full max-h-96 object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity border border-gray-200 dark:border-gray-600"
               onClick={() => setSelectedImage(attachment.url)}
               onError={(e) => {
-                e.target.src = '/default-image.svg';
+                e.target.style.display = 'none';
+                // Show fallback text
+                const fallback = document.createElement('div');
+                fallback.className = 'p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-center';
+                fallback.innerHTML = `
+                  <div class="text-gray-500 dark:text-gray-400 mb-2">
+                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p class="text-sm text-gray-600 dark:text-gray-300">Image failed to load</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Click to retry</p>
+                `;
+                fallback.onclick = () => {
+                  e.target.style.display = 'block';
+                  fallback.remove();
+                  e.target.src = attachment.url;
+                };
+                e.target.parentNode.appendChild(fallback);
               }}
               style={{
                 maxWidth: '100%',
@@ -423,23 +469,19 @@ const ChatMessages = ({ selectedConversation }) => {
                 display: 'block'
               }}
             />
-            {/* Hover overlay with zoom icon */}
-            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-200 rounded-lg flex items-center justify-center">
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-80 rounded-full p-2">
-                <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-                </svg>
-              </div>
+            {/* Simple hover indicator */}
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+              Click to view
             </div>
           </div>
         );
       
       case 'VIDEO':
         return (
-          <div className="relative">
+          <div className="relative inline-block">
             <video
               controls
-              className="max-w-full max-h-96 rounded-lg shadow-sm"
+              className="max-w-full max-h-96 rounded-lg border border-gray-200 dark:border-gray-600"
               poster={attachment.thumbnail}
               style={{
                 maxWidth: '100%',
@@ -458,7 +500,7 @@ const ChatMessages = ({ selectedConversation }) => {
           <div className="w-full max-w-md">
             <audio 
               controls 
-              className="w-full rounded-lg shadow-sm"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-600"
               style={{
                 maxWidth: '100%',
                 height: 'auto'
@@ -536,94 +578,108 @@ const ChatMessages = ({ selectedConversation }) => {
                               message.senderId === currentUser?.username;
           
           return (
-            <div
-              key={message.id || index}
-              className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
-              style={{ maxWidth: '100%' }}
-            >
-              <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} items-end space-x-2 max-w-xs lg:max-w-md`} style={{ maxWidth: '100%' }}>
-                {/* Avatar */}
-                {!isOwnMessage && (
-                  <img
-                    src={getSenderAvatar(message.senderId)}
-                    alt={getSenderName(message.senderId)}
-                    className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                    onError={(e) => {
-                      e.target.src = '/default-avatar.svg';
-                    }}
-                  />
-                )}
-
-                {/* Message Content */}
-                <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`} style={{ maxWidth: '100%' }}>
-                  {/* Sender Name */}
+            <div key={`message-${message.id || index}`}>
+              {/* Date Separator - like Messenger */}
+              {shouldShowDateSeparator(message, messages[index - 1]) && (
+                <div className="flex justify-center my-6">
+                  <div className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium px-3 py-1 rounded-full">
+                    {formatDateSeparator(message.timestamp)}
+                  </div>
+                </div>
+              )}
+              
+              <div
+                className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                style={{ maxWidth: '100%' }}
+              >
+                <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} items-end space-x-2`} style={{ maxWidth: '75%' }}>
+                  {/* Avatar */}
                   {!isOwnMessage && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      {getSenderName(message.senderId)}
-                    </span>
+                    <img
+                      src={getSenderAvatar(message.senderId)}
+                      alt={getSenderName(message.senderId)}
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.target.src = getAvatarUrl(null, 'user');
+                      }}
+                    />
                   )}
 
-                  {/* Message Bubble */}
-                  <div
-                    className={`rounded-lg max-w-full ${
-                      isOwnMessage
-                        ? message.attachment ? 'bg-transparent' : 'bg-blue-500 text-white px-4 py-2'
-                        : message.attachment ? 'bg-transparent' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 px-4 py-2'
-                    }`}
-                    style={{ 
-                      maxWidth: '100%',
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    {/* Original Text - Only show for TEXT type messages */}
-                    {message.type === 'TEXT' && message.originalText && (
-                      <p className="text-sm break-words whitespace-pre-wrap overflow-hidden" style={{ wordBreak: 'break-word' }}>
-                        {message.originalText}
-                      </p>
+                  {/* Message Content */}
+                  <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`} style={{ maxWidth: '100%' }}>
+                    {/* Sender Name */}
+                    {!isOwnMessage && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {getSenderName(message.senderId)}
+                      </span>
                     )}
-                    
-                    {/* Attachment */}
-                    {message.attachment && (
-                      <div className="mt-2">
-                        {renderAttachment(message.attachment)}
-                      </div>
-                    )}
-                    
-                    {/* Translation Section - Only show for text messages */}
-                    {message.type === 'TEXT' && (
-                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                        <div className="flex items-center space-x-1 mb-1">
-                          <Bot className="w-3 h-3 text-gray-400" />
-                          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                            {t('translation') || 'Translation'}
-                          </span>
-                        </div>
-                        
-                        {/* Show "Đang dịch..." when translatedText is undefined/null */}
-                        {!message.translatedText ? (
-                          <div className="flex items-center space-x-2">
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                              {message.isTranslating ? (t('translating') || 'Translating...') : (t('noTranslation') || 'No translation')}
-                            </p>
-                          </div>
-                        ) : (
-                          /* Show actual translation when available */
-                          <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded break-words">
-                            {message.translatedText}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Timestamp */}
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {formatTime(message.timestamp)}
-                  </span>
+                    {/* Message Bubble */}
+                    <div
+                      className={`rounded-lg ${
+                        isOwnMessage
+                          ? message.attachment ? 'bg-transparent' : 'bg-blue-500 text-white px-4 py-2'
+                          : message.attachment ? 'bg-transparent' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 px-4 py-2'
+                      }`}
+                      style={{ 
+                        maxWidth: '100%',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                        overflow: 'hidden',
+                        minWidth: '0' // Allow flex item to shrink below content size
+                      }}
+                    >
+                      {/* Original Text - Only show for TEXT type messages */}
+                      {message.type === 'TEXT' && message.originalText && (
+                        <p className="text-sm break-words whitespace-pre-wrap overflow-hidden" style={{ wordBreak: 'break-word' }}>
+                          {message.originalText}
+                        </p>
+                      )}
+                      
+                      {/* Attachment */}
+                      {message.attachment && (
+                        <div className="mt-2">
+                          {renderAttachment(message.attachment)}
+                        </div>
+                      )}
+                      
+                      {/* Translation Section - Only show for text messages */}
+                      {message.type === 'TEXT' && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                          <div className="flex items-center space-x-1 mb-1">
+                            <Bot className="w-3 h-3 text-gray-400" />
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                              {t('translation') || 'Translation'}
+                            </span>
+                          </div>
+                          
+                          {/* Show "Đang dịch..." when translatedText is undefined/null */}
+                          {!message.translatedText ? (
+                            <div className="flex items-center space-x-2">
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                                {message.isTranslating ? (t('translating') || 'Translating...') : (t('noTranslation') || 'No translation')}
+                              </p>
+                            </div>
+                          ) : (
+                            /* Show actual translation when available */
+                            <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded break-words">
+                              {message.translatedText}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Timestamp */}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {formatTime(message.timestamp)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -634,54 +690,53 @@ const ChatMessages = ({ selectedConversation }) => {
       {/* This div is used as a scroll target for the bottom */}
       <div ref={messagesEndRef} style={{ height: '1px' }} />
       
-      {/* Image Modal */}
+      {/* Image Modal - Messenger Style */}
       {selectedImage && (
         <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
           onClick={() => setSelectedImage(null)}
         >
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-[95vw] max-h-[95vh] overflow-hidden">
-            {/* Header */}
-            <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4 z-10">
-              <div className="flex items-center justify-between">
-                <h3 className="text-white font-medium">Image Preview</h3>
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/20"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            {/* Image */}
-            <div className="w-full h-full flex items-center justify-center p-4">
-              <img
-                src={selectedImage}
-                alt=""
-                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain'
-                }}
-              />
-            </div>
-            
-            {/* Footer with zoom controls */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-4 z-10">
-              <div className="flex items-center justify-center space-x-4">
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors backdrop-blur-sm"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
+          {/* Close button - top right */}
+          <button
+            onClick={() => setSelectedImage(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors p-3 rounded-full hover:bg-white/20 z-10"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          {/* Image container - centered and responsive */}
+          <div 
+            className="flex items-center justify-center w-full h-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={selectedImage}
+              alt=""
+              className="max-w-full max-h-full object-contain rounded-lg"
+              style={{
+                maxWidth: '95vw',
+                maxHeight: '95vh',
+                objectFit: 'contain'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'text-white text-center p-8';
+                errorDiv.innerHTML = `
+                  <div class="mb-4">
+                    <svg class="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p class="text-lg font-medium mb-2">Failed to load image</p>
+                  <p class="text-gray-400">The image could not be displayed</p>
+                `;
+                e.target.parentNode.appendChild(errorDiv);
+              }}
+            />
           </div>
         </div>
       )}

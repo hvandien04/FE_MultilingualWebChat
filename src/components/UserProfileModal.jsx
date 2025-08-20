@@ -1,5 +1,6 @@
 import { X, Mail, Globe, Clock, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getAvatarUrl } from '../config/api';
 
 const UserProfileModal = ({ isOpen, onClose, user }) => {
   const { t } = useLanguage();
@@ -50,11 +51,14 @@ const UserProfileModal = ({ isOpen, onClose, user }) => {
           <div className="text-center mb-4">
             <div className="relative inline-block">
               <img
-                src={user.avatarUrl || user.avatar || '/default-avatar.svg'}
+                src={getAvatarUrl(user.avatarUrl || user.avatar, 'user')}
                 alt={user.fullName || user.name || user.username}
                 className="w-20 h-20 rounded-full object-cover mx-auto mb-3"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
                 onError={(e) => {
-                  e.target.src = '/default-avatar.svg';
+                  e.target.src = getAvatarUrl(null, 'user');
                 }}
               />
               <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-2 border-white ${

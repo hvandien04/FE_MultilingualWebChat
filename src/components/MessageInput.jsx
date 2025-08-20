@@ -21,17 +21,14 @@ const MessageInput = ({ onSendMessage, disabled = false }) => {
       if (attachments.length > 0) {
         setIsUploading(true);
         try {
-          console.log('🚀 Starting file uploads...');
           
           const uploadedAttachments = await Promise.all(
             attachments.map(async (attachment, index) => {
               if (attachment.uploaded) {
                 return attachment;
               } else {
-                console.log(`📤 Uploading ${attachment.name} (${index + 1}/${attachments.length})...`);
                 const result = await cloudinaryService.uploadFile(attachment.file);
                 if (result.success) {
-                  console.log(`✅ Uploaded ${attachment.name} successfully`);
                   return {
                     ...attachment,
                     uploaded: true,
@@ -44,14 +41,11 @@ const MessageInput = ({ onSendMessage, disabled = false }) => {
             })
           );
 
-          console.log('🎉 All files uploaded successfully!');
-
           // Send message with attachments
           onSendMessage(message.trim(), uploadedAttachments);
           setMessage('');
           setAttachments([]);
         } catch (error) {
-          console.error('Upload error:', error);
           alert(`Upload failed: ${error.message}`);
         } finally {
           setIsUploading(false);

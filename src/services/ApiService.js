@@ -25,7 +25,7 @@ axios.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token expired or invalid
       localStorage.removeItem('authToken');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }
@@ -84,6 +84,51 @@ class ApiService {
     }
   }
 
+  // Update password
+  static async updatePassword(password, newPassword) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_PASSWORD);
+      const payload = { password, newPassword };
+      const response = await axios.put(url, payload, { headers: getAuthHeaders() });
+      const message = response?.data?.message || '';
+      const success = /success/i.test(message);
+      const data = response?.data?.result;
+      return { success, message, data };
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  // Update user profile (fullName + locale)
+  static async updateUser(fullName, locale) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_USER);
+      const payload = { fullName, locale };
+      const response = await axios.put(url, payload, { headers: getAuthHeaders() });
+      const result = handleApiResponse(response);
+      return result;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  // Update avatar URL (send raw string body, text/plain)
+  static async updateAvatar(avatarUrl) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_AVATAR);
+      const response = await axios.put(url, avatarUrl, {
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'text/plain'
+        }
+      });
+      const success = response?.data?.code === 200;
+      const message = response?.data?.message || '';
+      return { success, message };
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
   // Chat methods
   static async getMessages(conversationId, page = 0, size = API_CONFIG.MESSAGES_PER_PAGE) {
     try {
@@ -91,6 +136,95 @@ class ApiService {
         page,
         size
       }));
+      return handleApiResponse(response);
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  // Create a direct (1-1) conversation
+  static async createDirectConversation(toUserId) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.CONVERSATIONS);
+      const response = await axios.post(url, { toUserId }, {
+        headers: getAuthHeaders()
+      });
+      const result = handleApiResponse(response);
+      return result;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  // Create a group conversation
+  static async createGroupConversation(userIds, conversationName, locale) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.CREATE_GROUP);
+      const payload = {
+        userIds,
+        conversationName,
+        locale
+      };
+      const response = await axios.post(url, payload, {
+        headers: getAuthHeaders()
+      });
+      const result = handleApiResponse(response);
+      return result;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+    static async findUser(request) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.FIND_USER);
+      const response = await axios.post(url, null, {
+        params: { request },
+        headers: getAuthHeaders()
+      });
+      return handleApiResponse(response);
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  // Group management methods
+  static async updateConversationName(conversationId, name) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_CONVERSATION_NAME.replace('{conversationId}', conversationId));
+      const response = await axios.put(url, name, {
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'text/plain'
+        }
+      });
+      return handleApiResponse(response);
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  static async updateConversationLocale(conversationId, locale) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_CONVERSATION_LOCALE.replace('{conversationId}', conversationId));
+      const response = await axios.put(url, locale, {
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'text/plain'
+        }
+      });
+      return handleApiResponse(response);
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  static async addMemberToGroup(conversationId, userIds) {
+    try {
+      const url = buildApiUrl(API_CONFIG.ENDPOINTS.ADD_MEMBER_TO_CONVERSATION.replace('{conversationId}', conversationId));
+      const response = await axios.post(url, { userIds }, {
+        headers: getAuthHeaders()
+      });
       return handleApiResponse(response);
     } catch (error) {
       throw handleApiError(error);

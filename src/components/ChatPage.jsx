@@ -4,6 +4,7 @@ import { Settings, Menu, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import webSocketService from '../services/WebSocketService';
+import { getAvatarUrl } from '../config/api';
 
   // Lazy load components
   const ConversationList = lazy(() => import('./ConversationList'));
@@ -13,14 +14,16 @@ import webSocketService from '../services/WebSocketService';
   const LanguageSelector = lazy(() => import('./LanguageSelector'));
   const NewConversationModal = lazy(() => import('./NewConversationModal'));
   const UserProfileModal = lazy(() => import('./UserProfileModal'));
+  const AddMemberModalV2 = lazy(() => import('./AddMemberModalV2'));
 
   const ChatPage = () => {
     const [selectedConversation, setSelectedConversation] = useState(null);
     const [showSidebar, setShowSidebar] = useState(false);
     const [showInfoPanel, setShowInfoPanel] = useState(false);
-    const [showNewConversationModal, setShowNewConversationModal] = useState(false);
-    const [showUserProfileModal, setShowUserProfileModal] = useState(false);
-    const [selectedUser, setSelectedUser] = useState(null);
+      const [showNewConversationModal, setShowNewConversationModal] = useState(false);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
     
     const { currentUser } = useAuth();
     const { t } = useLanguage();
@@ -30,116 +33,99 @@ import webSocketService from '../services/WebSocketService';
 
     const handleSendMessage = (messageText, attachments = []) => {
       if (!selectedConversation) {
-        console.warn('No conversation selected');
         return;
       }
 
       const conversationId = selectedConversation.conversationId || selectedConversation.id;
-      console.log('📤 Sending message to conversation:', conversationId, messageText, attachments);
-
+      
       // Send message via WebSocket
       try {
         if (attachments && attachments.length > 0) {
-          // Send each attachment as a separate message
           attachments.forEach(attachment => {
             const messageType = attachment.cloudinaryData?.type || 'FILE';
-            
-            // Send only the required fields to WebSocket
             const success = webSocketService.sendMessage(
               conversationId,
-              attachment.cloudinaryData?.url || '', // messageText = URL
+              attachment.cloudinaryData?.url || '',
               messageType
             );
-            
             if (success) {
-              console.log(`✅ ${messageType} message sent via WebSocket`);
-              
-              // Update conversation list with new message
               if (selectedConversation.updateWithNewMessage) {
-                console.log('🔄 Updating conversation list with attachment message');
                 selectedConversation.updateWithNewMessage(conversationId, {
                   type: messageType,
                   messageText: attachment.cloudinaryData?.url || '',
                   userId: currentUser?.id || currentUser?.userId,
                   timestamp: Date.now(),
-                  // Attachments don't need translation
                   isTranslating: false
                 });
-              } else {
-                console.warn('⚠️ updateWithNewMessage function not found');
-                // Try to use window method as fallback
-                if (window.updateConversation) {
-                  window.updateConversation(conversationId, {
-                    type: messageType,
-                    messageText: attachment.cloudinaryData?.url || '',
-                    userId: currentUser?.id || currentUser?.userId,
-                    timestamp: Date.now(),
-                    // Attachments don't need translation
-                    isTranslating: false
-                  });
+                if (selectedConversation.moveToTop) {
+                  selectedConversation.moveToTop(conversationId);
                 }
+              } else if (window.updateConversation) {
+                window.updateConversation(conversationId, {
+                  type: messageType,
+                  messageText: attachment.cloudinaryData?.url || '',
+                  userId: currentUser?.id || currentUser?.userId,
+                  timestamp: Date.now(),
+                  isTranslating: false
+                });
               }
-            } else {
-              console.error(`❌ Failed to send ${messageType} message via WebSocket`);
             }
           });
         } else {
-          // Send text message
           const success = webSocketService.sendMessage(
             conversationId,
-            messageText, // messageText = user input text
+            messageText,
             'TEXT'
           );
-          
           if (success) {
-            console.log('✅ Text message sent via WebSocket');
-            
-                          // Update conversation list with new message
-              if (selectedConversation.updateWithNewMessage) {
-                console.log('🔄 Updating conversation list with text message');
-                selectedConversation.updateWithNewMessage(conversationId, {
-                  type: 'TEXT',
-                  messageText: messageText,
-                  userId: currentUser?.id || currentUser?.userId,
-                  timestamp: Date.now(),
-                  // Mark as pending translation for new text messages
-                  isTranslating: true
-                });
-              } else {
-                console.warn('⚠️ updateWithNewMessage function not found');
-                // Try to use window method as fallback
-                if (window.updateConversation) {
-                  window.updateConversation(conversationId, {
-                    type: 'TEXT',
-                    messageText: messageText,
-                    userId: currentUser?.id || currentUser?.userId,
-                    timestamp: Date.now(),
-                    // Mark as pending translation for new text messages
-                    isTranslating: true
-                  });
-                }
+            if (selectedConversation.updateWithNewMessage) {
+              selectedConversation.updateWithNewMessage(conversationId, {
+                type: 'TEXT',
+                messageText: messageText,
+                userId: currentUser?.id || currentUser?.userId,
+                timestamp: Date.now(),
+                isTranslating: true
+              });
+              if (selectedConversation.moveToTop) {
+                selectedConversation.moveToTop(conversationId);
               }
-          } else {
-            console.error('❌ Failed to send text message via WebSocket');
+            } else if (window.updateConversation) {
+              window.updateConversation(conversationId, {
+                type: 'TEXT',
+                messageText: messageText,
+                userId: currentUser?.id || currentUser?.userId,
+                timestamp: Date.now(),
+                isTranslating: true
+              });
+            }
           }
         }
       } catch (error) {
-        console.error('❌ Error sending message:', error);
       }
     };
 
     const handleSelectConversation = (conversation) => {
-      console.log('ChatPage: Selected conversation:', conversation);
-      setSelectedConversation(conversation);
+      
+      // Ensure conversation has all required properties with consistent ID
+      const enhancedConversation = {
+        ...conversation,
+        // Use conversationId as the main ID for consistency
+        id: conversation.conversationId || conversation.id,
+        conversationId: conversation.conversationId || conversation.id,
+        // Add update functions if not present
+        updateWithNewMessage: conversation.updateWithNewMessage || (() => {}),
+        moveToTop: conversation.moveToTop || (() => {})
+      };
+      
+      setSelectedConversation(enhancedConversation);
       // On mobile, hide sidebar when conversation is selected
       setShowSidebar(false);
+      
     };
 
     const handleNewConversation = (newConversation) => {
-      // In a real app, you would create the conversation in the backend
-      console.log('Creating new conversation:', newConversation);
-      setSelectedConversation(newConversation);
-      // On mobile, hide sidebar when conversation is selected
+      // Route selection via the same enhancer used for list clicks
+      handleSelectConversation(newConversation);
       setShowSidebar(false);
     };
 
@@ -157,7 +143,7 @@ import webSocketService from '../services/WebSocketService';
     };
 
     return (
-      <div className="h-screen flex flex-col bg-gray-100">
+      <div className="h-screen-mobile flex flex-col bg-gray-100 safe-top safe-bottom">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -170,19 +156,19 @@ import webSocketService from '../services/WebSocketService';
             </button>
 
             {/* User info */}
-             <div className="flex items-center space-x-3">
+             <div className="hidden lg:flex items-center space-x-3">
                 <div className="relative">
                   {currentUser ? (
                     <img
-                      src={
-                        (currentUser.avatarUrl ?? currentUser.avatar ?? '').trim() 
-                          || '/default-avatar.svg'
-                      }
+                      src={getAvatarUrl(currentUser.avatarUrl || currentUser.avatar, 'user')}
                       alt={currentUser.fullName || currentUser.name || 'User'}
                       className="w-10 h-10 rounded-full object-cover bg-gray-200"
                       loading="lazy"
                       decoding="async"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.target.src = getAvatarUrl(null, 'user');
+                      }}
                     />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-gray-200 animate-pulse" />
@@ -236,11 +222,11 @@ import webSocketService from '../services/WebSocketService';
                 <div className="flex items-center space-x-3">
                   <div className="relative">
                     <img
-                      src={selectedConversation.avatarUrl || '/default-avatar.svg'}
+                      src={getAvatarUrl(selectedConversation.avatarUrl, selectedConversation.type === 'group' ? 'group' : 'user')}
                       alt={selectedConversation.type === 'group' ? selectedConversation.name : 'User'}
                       className="w-10 h-10 rounded-full object-cover"
                       onError={(e) => {
-                        e.target.src = '/default-avatar.svg';
+                        e.target.src = getAvatarUrl(null, selectedConversation.type === 'group' ? 'group' : 'user');
                       }}
                     />
                     <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
@@ -292,6 +278,7 @@ import webSocketService from '../services/WebSocketService';
               <ConversationInfo 
                 selectedConversation={selectedConversation}
                 onUserProfileClick={handleUserProfileClick}
+                onAddMemberClick={() => setShowAddMemberModal(true)}
               />
             </Suspense>
           </div>
@@ -325,6 +312,57 @@ import webSocketService from '../services/WebSocketService';
             isOpen={showUserProfileModal}
             onClose={() => setShowUserProfileModal(false)}
             user={selectedUser}
+          />
+
+          <AddMemberModalV2
+            isOpen={showAddMemberModal}
+            onClose={() => setShowAddMemberModal(false)}
+            conversation={selectedConversation}
+            onAddMembers={async (newMembers, conversationId) => {
+              
+              // Update conversation with new members in FE
+              if (selectedConversation && window.updateConversationInfo) {
+                // Convert new members to the format expected by conversation
+                const newParticipants = newMembers.map(user => ({
+                  userId: user.userId,
+                  fullName: user.fullName,
+                  email: user.email,
+                  avatarUrl: user.avatarUrl,
+                  locale: user.locale,
+                  isOnline: true // Default to online for new members
+                }));
+                
+                // Get existing participants to avoid duplicates
+                const existingParticipants = selectedConversation.participants || [];
+                const existingUserIds = existingParticipants.map(p => p.userId);
+                
+                // Filter out users that already exist in the group
+                const uniqueNewParticipants = newParticipants.filter(user => 
+                  !existingUserIds.includes(user.userId)
+                );
+                
+                if (uniqueNewParticipants.length === 0) {
+                  return;
+                }
+                
+                // Update conversation with unique new participants
+                const updatedParticipants = [
+                  ...existingParticipants,
+                  ...uniqueNewParticipants
+                ];
+                
+                window.updateConversationInfo(conversationId, {
+                  participants: updatedParticipants
+                });
+                
+                // Update local selectedConversation state
+                setSelectedConversation(prev => ({
+                  ...prev,
+                  participants: updatedParticipants
+                }));
+                
+              }
+            }}
           />
         </Suspense>
       </div>

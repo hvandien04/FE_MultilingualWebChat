@@ -23,34 +23,27 @@ class WebSocketService {
   connect(token, onConnect, onError) {
     // Nếu đã kết nối thì bỏ qua
     if (this.connected) {
-      console.log('✅ WS already connected');
       onConnect?.();
       return;
     }
     
     this.token = token;
-    console.log('🚀 Starting WebSocket connection...');
-    console.log('📡 Target endpoint: http://localhost:8081/chat/ws');
-    console.log('🔑 Token:', token ? `${token.substring(0, 20)}...` : 'No token');
 
     this.stompClient = new Client({
       // SockJS dùng http/https, KHÔNG dùng ws/wss
       webSocketFactory: () => {
-        console.log('Creating SockJS connection to: http://localhost:8081/chat/ws');
         return new SockJS('http://localhost:8081/chat/ws');
+        // return new SockJS('http://192.168.1.5:8081/chat/ws');
       },
       connectHeaders: {
         Authorization: `Bearer ${token}`,
       },
-      debug: (str) => console.log('[STOMP]', str),
-      // Auto reconnect
       reconnectDelay: this.reconnectDelay,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
     });
 
     this.stompClient.onConnect = (frame) => {
-      console.log('✅ WebSocket connected successfully:', frame);
       this.reconnectAttempts = 0;
 
       // resubscribe tất cả phòng đã lưu handler
@@ -112,7 +105,6 @@ class WebSocketService {
       const sub = this.stompClient.subscribe(topic, (message) => {
         try {
           const data = JSON.parse(message.body);
-          console.log('Received message from conversation:', conversationId, data);
           messageHandler?.(data);
         } catch (e) {
           console.error('Parse message error:', e);
@@ -120,7 +112,6 @@ class WebSocketService {
       });
 
       this.subscriptions.set(conversationId, sub);
-      console.log(`Successfully subscribed to conversation: ${conversationId}`);
       return sub;
     } catch (error) {
       console.error('Error subscribing to conversation:', error);
@@ -197,7 +188,6 @@ class WebSocketService {
       type: messageType.toUpperCase() // TEXT, IMAGE, FILE, VIDEO
     };
     
-    console.log('📤 Sending message via WebSocket:', payload);
     
     // Khớp @MessageMapping("/chat") trên BE (không có {conversationId})
     this.stompClient.publish({
@@ -223,7 +213,6 @@ class WebSocketService {
 
     this.stompClient?.deactivate();
     this.stompClient = null;
-    console.log('WS disconnected');
   }
 
   getConnectionStatus() {
@@ -236,10 +225,15 @@ class WebSocketService {
       messageHandlers: this.messageHandlers.size
     };
     
-    console.log('🔍 WebSocket Status:', status);
     return status;
   }
 }
 
 const webSocketService = new WebSocketService();
+
+// Export ra window để ConversationList có thể truy cập
+if (typeof window !== 'undefined') {
+  window.webSocketService = webSocketService;
+}
+
 export default webSocketService;

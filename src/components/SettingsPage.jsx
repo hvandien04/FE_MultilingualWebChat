@@ -4,6 +4,8 @@ import { ArrowLeft, Camera, LogOut, Save, X, Bell, Shield, Palette, Globe, User,
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import AILanguageSelector from './AILanguageSelector';
+import { getAvatarUrl } from '../config/api';
+import ApiService from '../services/ApiService';
 
 const SettingsPage = () => {
   const [isEditing, setIsEditing] = useState(false);
@@ -22,22 +24,88 @@ const SettingsPage = () => {
       showOnlineStatus: true,
       showLastSeen: true,
       allowGroupInvites: true
-    }
+    },
+    currentPassword: '',
+    newPassword: '',
+    confirmNewPassword: ''
   });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordMessageType, setPasswordMessageType] = useState(null); // 'success' | 'error'
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarMessage, setAvatarMessage] = useState('');
+  const [avatarInputKey, setAvatarInputKey] = useState(0);
   
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, setCurrentUser } = useAuth();
   const { currentLanguage, changeLanguage, t } = useLanguage();
   const navigate = useNavigate();
+  const [isUpdatingLocale, setIsUpdatingLocale] = useState(false);
+  const [aiLocaleMessage, setAiLocaleMessage] = useState('');
+  const [aiLocaleStatus, setAiLocaleStatus] = useState(null); // 'success' | 'error'
+
+  // Sync AI language with current user locale when available
+  if (currentUser && formData.aiLanguage === 'en') {
+    // Initialize once when default still 'en' (lowercase) to match AILanguageSelector codes
+    const initLocale = (currentUser.locale || 'EN').toUpperCase();
+    if (formData.aiLanguage !== initLocale) {
+      setFormData({ ...formData, aiLanguage: initLocale });
+    }
+  }
+
+  const handleUpdateLocale = async (languageCode) => {
+    const selected = (languageCode || 'EN').toUpperCase();
+    const normalized = selected;
+    try {
+      setIsUpdatingLocale(true);
+      setAiLocaleMessage('');
+      setAiLocaleStatus(null);
+      const res = await ApiService.updateUser(currentUser?.fullName || '', normalized);
+      if (res?.data) {
+        setCurrentUser({
+          ...currentUser,
+          fullName: res.data.fullName,
+          locale: res.data.locale,
+          avatarUrl: res.data.avatarUrl,
+          username: res.data.username,
+          email: res.data.email,
+          id: res.data.userId || currentUser?.id
+        });
+      }
+      setAiLocaleStatus('success');
+      setAiLocaleMessage(t('saved') || 'Saved');
+    } catch (e) {
+      setAiLocaleStatus('error');
+      setAiLocaleMessage(e.message || 'Failed');
+    } finally {
+      setIsUpdatingLocale(false);
+    }
+  };
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleSave = () => {
-    // In a real app, you would save the changes to the backend
-    console.log('Saving settings:', formData);
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      const locale = (formData.aiLanguage || 'EN').toUpperCase();
+      const normalizedLocale = locale;
+      const fullName = formData.name?.trim() || currentUser?.fullName || '';
+      const res = await ApiService.updateUser(fullName, normalizedLocale);
+      if (res?.data) {
+        setCurrentUser({
+          ...currentUser,
+          fullName: res.data.fullName,
+          locale: res.data.locale,
+          avatarUrl: res.data.avatarUrl,
+          username: res.data.username,
+          email: res.data.email,
+          id: res.data.userId || currentUser?.id
+        });
+      }
+      setIsEditing(false);
+    } catch (e) {
+    }
   };
 
   const handleCancel = () => {
@@ -55,7 +123,10 @@ const SettingsPage = () => {
         showOnlineStatus: true,
         showLastSeen: true,
         allowGroupInvites: true
-      }
+      },
+      currentPassword: '',
+      newPassword: '',
+      confirmNewPassword: ''
     });
     setIsEditing(false);
   };
@@ -156,16 +227,60 @@ const SettingsPage = () => {
             <div className="flex items-center space-x-4">
               <div className="relative">
                 <img
-                  src={currentUser?.avatarUrl || currentUser?.avatar || '/default-avatar.svg'}
+                  src={getAvatarUrl(currentUser?.avatarUrl || currentUser?.avatar, 'user')}
                   alt={currentUser?.fullName || currentUser?.name || 'User'}
                   className="w-20 h-20 rounded-full object-cover bg-gray-200"
                   onError={(e) => {
-                    e.target.src = '/default-avatar.svg';
+                    e.target.src = getAvatarUrl(null, 'user');
                   }}
                 />
-                <button className="absolute bottom-0 right-0 p-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors">
+                <label className="absolute bottom-0 right-0 p-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors cursor-pointer">
                   <Camera className="w-4 h-4" />
-                </button>
+                  <input
+                    key={avatarInputKey}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      try {
+                        setIsUploadingAvatar(true);
+                        setAvatarMessage('');
+                        // Validate and upload to Cloudinary
+                        const { valid, error } = (await import('../services/CloudinaryService')).default.validateFile(file);
+                        if (!valid) {
+                          setAvatarMessage(error || 'Invalid file');
+                          return;
+                        }
+                        const cloudinary = (await import('../services/CloudinaryService')).default;
+                        const result = await cloudinary.uploadFile(file);
+                        if (!result.success) {
+                          throw new Error(result.error || 'Upload failed');
+                        }
+                        const url = result.data.url;
+                        // Call backend to update avatar (raw string, text/plain)
+                        const res = await ApiService.updateAvatar(url);
+                        if (res.success) {
+                          // Update current user locally
+                          setCurrentUser({
+                            ...currentUser,
+                            avatarUrl: url
+                          });
+                          setAvatarMessage(t('saved') || 'Saved');
+                        } else {
+                          setAvatarMessage(res.message || 'Failed');
+                        }
+                      } catch (err) {
+                        setAvatarMessage(err.message || 'Upload failed');
+                      } finally {
+                        setIsUploadingAvatar(false);
+                        // reset input to allow same file re-select
+                        setAvatarInputKey((k) => k + 1);
+                      }
+                    }}
+                  />
+                </label>
               </div>
               <div className="flex-1 space-y-4">
                 <div>
@@ -182,6 +297,9 @@ const SettingsPage = () => {
                 </div>
               </div>
             </div>
+            {avatarMessage && (
+              <p className={`text-sm mt-2 ${isUploadingAvatar ? 'text-gray-600' : 'text-green-600'}`}>{avatarMessage}{isUploadingAvatar ? '…' : ''}</p>
+            )}
 
             {/* User Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -306,8 +424,16 @@ const SettingsPage = () => {
               <div className="relative">
                 <AILanguageSelector
                   selectedLanguage={formData.aiLanguage}
-                  onLanguageChange={(lang) => setFormData({ ...formData, aiLanguage: lang })}
+                  onLanguageChange={async (lang) => {
+                    setFormData({ ...formData, aiLanguage: lang });
+                    await handleUpdateLocale(lang);
+                  }}
                 />
+                {aiLocaleMessage && (
+                  <p className={`text-sm mt-2 ${aiLocaleStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                    {aiLocaleMessage}{isUpdatingLocale ? '…' : ''}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -441,6 +567,8 @@ const SettingsPage = () => {
                   type="password"
                   placeholder={t('enterCurrentPassword')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.currentPassword || ''}
+                  onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
                 />
               </div>
               
@@ -452,6 +580,8 @@ const SettingsPage = () => {
                   type="password"
                   placeholder={t('enterNewPassword')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.newPassword || ''}
+                  onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
                 />
               </div>
               
@@ -463,7 +593,15 @@ const SettingsPage = () => {
                   type="password"
                   placeholder={t('confirmNewPasswordPlaceholder')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.confirmNewPassword || ''}
+                  onChange={(e) => setFormData({ ...formData, confirmNewPassword: e.target.value })}
                 />
+                {formData.newPassword && formData.confirmNewPassword && formData.newPassword !== formData.confirmNewPassword && (
+                  <p className="text-xs text-red-600 mt-1">{t('passwordsDoNotMatch')}</p>
+                )}
+                {passwordMessage && (
+                  <p className={`text-sm mt-2 ${passwordMessageType === 'success' ? 'text-green-600' : 'text-red-600'}`}>{passwordMessage}</p>
+                )}
               </div>
             </div>
             
@@ -475,14 +613,43 @@ const SettingsPage = () => {
                                  {t('cancel')}
               </button>
               <button
-                onClick={() => {
-                  // TODO: Implement password change logic
-                  console.log('Change password');
-                  setShowPasswordModal(false);
+                onClick={async () => {
+                  if (isChangingPassword) return;
+                  if (!formData.currentPassword || !formData.newPassword) return;
+                  if (formData.newPassword !== formData.confirmNewPassword) return;
+                  try {
+                    setIsChangingPassword(true);
+                    setPasswordMessage('');
+                    setPasswordMessageType(null);
+                    const res = await ApiService.updatePassword(formData.currentPassword, formData.newPassword);
+                    const msg = res?.message || '';
+                    if (res?.success) {
+                      setPasswordMessageType('success');
+                      setPasswordMessage(msg || 'Change password successfully');
+                      setFormData({ ...formData, currentPassword: '', newPassword: '', confirmNewPassword: '' });
+                      setTimeout(() => {
+                        setShowPasswordModal(false);
+                        setPasswordMessage('');
+                        setPasswordMessageType(null);
+                      }, 1200);
+                    } else {
+                      setPasswordMessageType('error');
+                      setPasswordMessage(msg || 'Failed to change password');
+                    }
+                  } catch (e) {
+                    setPasswordMessageType('error');
+                    setPasswordMessage(e.message || 'Failed to change password');
+                  } finally {
+                    setIsChangingPassword(false);
+                  }
                 }}
-                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                className={`flex-1 px-4 py-2 text-white rounded-lg transition-colors ${
+                  formData.currentPassword && formData.newPassword && formData.confirmNewPassword && formData.newPassword === formData.confirmNewPassword && !isChangingPassword
+                    ? 'bg-blue-500 hover:bg-blue-600'
+                    : 'bg-gray-300 cursor-not-allowed'
+                } ${isChangingPassword ? 'cursor-wait' : ''}`}
               >
-                                 {t('changePassword')}
+                {t('changePassword')}
               </button>
             </div>
           </div>

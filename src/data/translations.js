@@ -126,6 +126,7 @@ export const translations = {
     fileSizeExceeded: 'File size exceeds 10MB limit',
     fileTypeNotSupported: 'File type not supported',
     uploading: 'Uploading...',
+    passwordsDoNotMatch: 'Passwords do not match',
   },
   vi: {
     // Existing translations
@@ -253,7 +254,8 @@ export const translations = {
     uploadFailed: 'Tải lên thất bại',
     fileSizeExceeded: 'Kích thước file vượt quá giới hạn 10MB',
     fileTypeNotSupported: 'Loại file không được hỗ trợ',
-    uploading: 'Đang tải lên...'
+    uploading: 'Đang tải lên...',
+    passwordsDoNotMatch: 'Mật khẩu không khớp',
   },
   es: {
     // Existing translations
@@ -382,5 +384,6 @@ export const translations = {
     fileSizeExceeded: 'El tamaño del archivo excede el límite de 10MB',
     fileTypeNotSupported: 'Tipo de archivo no soportado',
     uploading: 'Subiendo...',
+    passwordsDoNotMatch: 'Las contraseñas no coinciden',
   }
 }; 

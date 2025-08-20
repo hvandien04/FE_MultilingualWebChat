@@ -62,7 +62,6 @@ class CloudinaryService {
         }
       };
     } catch (error) {
-      console.error('Cloudinary upload error:', error);
       return {
         success: false,
         error: error.message
@@ -155,7 +154,6 @@ class CloudinaryService {
 
       return { success: true };
     } catch (error) {
-      console.error('Cloudinary delete error:', error);
       return { success: false, error: error.message };
     }
   }
@@ -164,7 +162,6 @@ class CloudinaryService {
   generateSignature(publicId, timestamp) {
     // This would need to be implemented on your backend for security
     // Frontend shouldn't have access to API secret
-    console.warn('Delete signature should be generated on backend');
     return '';
   }
 }

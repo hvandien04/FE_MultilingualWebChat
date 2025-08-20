@@ -47,11 +47,11 @@ export const AuthProvider = ({ children }) => {
           // Connect to WebSocket after successful login
           try {
             webSocketService.connect(result.data.token, 
-              () => console.log('WebSocket connected after login'),
-              (error) => console.error('WebSocket connection error:', error)
+              () => {},
+              (error) => {}
             );
           } catch (wsError) {
-            console.warn('Failed to connect WebSocket:', wsError);
+            
           }
           
           return { success: true, user };
@@ -67,7 +67,6 @@ export const AuthProvider = ({ children }) => {
           return { success: true, user };
         }
       } catch (userError) {
-        console.warn('Failed to get user details, using basic user object:', userError);
         const user = {
           id: username,
           username: username,
@@ -113,7 +112,7 @@ export const AuthProvider = ({ children }) => {
     try {
       webSocketService.disconnect();
     } catch (wsError) {
-      console.warn('Failed to disconnect WebSocket:', wsError);
+      
     }
     
     setCurrentUser(null);
@@ -124,7 +123,6 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     setIsLoading(true);
     try {
-      console.log('Redirecting to Google OAuth2...');
       
       // Redirect to Google OAuth2 authorization URL
       window.location.href = `${API_CONFIG.BASE_URL}/identify/oauth2/authorization/google`;
@@ -132,7 +130,6 @@ export const AuthProvider = ({ children }) => {
       // Note: This function won't return immediately due to redirect
       // The actual authentication will happen after user returns from Google
     } catch (error) {
-      console.error('Google OAuth2 error:', error);
       setIsLoading(false);
       throw new Error('Google login failed');
     }
@@ -165,11 +162,9 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         return { success: true, user };
       } else {
-        console.error('Invalid user response format:', userResult);
         throw new Error('Failed to get user details after OAuth2');
       }
     } catch (error) {
-      console.error('OAuth2 success handling error:', error);
       throw error;
     }
   };
@@ -246,17 +241,16 @@ export const AuthProvider = ({ children }) => {
           // Connect to WebSocket after restoring session
           try {
             webSocketService.connect(token, 
-              () => console.log('✅ WebSocket connected after session restore'),
-              (error) => console.error('❌ WebSocket connection error after session restore:', error)
+              () => {},
+              (error) => {}
             );
           } catch (wsError) {
-            console.warn('⚠️ Failed to connect WebSocket after session restore:', wsError);
+            
           }
         } else {
           logout();
         }
       } catch (error) {
-        console.error('Auth check error:', error);
         logout();
       }
     }
@@ -266,6 +260,7 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     isAuthenticated,
     isLoading,
+    setCurrentUser, // expose for UI immediate updates
     login,
     register,
     logout,

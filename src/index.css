@@ -1,5 +1,44 @@
 @import "tailwindcss";
 /* Custom styles for smooth animations */
+/* Mobile viewport height fixes */
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+/* Fallback for iOS Safari dynamic toolbars */
+.h-screen-mobile {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .h-screen-mobile {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* iOS Safari specific fill-available fallback */
+@supports (-webkit-touch-callout: none) {
+  .h-screen-mobile {
+    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
+  }
+}
+
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+.safe-top {
+  padding-top: var(--safe-area-inset-top);
+}
 @layer utilities {
   .slide-in-left {
     animation: slideInLeft 0.3s ease-out;

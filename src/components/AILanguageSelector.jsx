@@ -9,7 +9,7 @@ const AILanguageSelector = ({ selectedLanguage, onLanguageChange, className = ''
 
   const languages = [
     { code: 'EN', name: 'English', flag: '🇺🇸' },
-    { code: 'VI', name: 'Tiếng Việt', flag: '🇻🇳' },
+    { code: 'VN', name: 'Tiếng Việt', flag: '🇻🇳' },
     { code: 'ES', name: 'Español', flag: '🇪🇸' },
     { code: 'FR', name: 'Français', flag: '🇫🇷' },
     { code: 'DE', name: 'Deutsch', flag: '🇩🇪' },

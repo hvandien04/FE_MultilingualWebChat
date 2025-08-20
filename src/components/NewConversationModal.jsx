@@ -1,67 +1,132 @@
 import { useState } from 'react';
-import { Search, X, UserPlus, Users } from 'lucide-react';
-import { mockUsers } from '../data/mockData';
+import { X, UserPlus, Users } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import AILanguageSelector from './AILanguageSelector';
+import UserSearch from './UserSearch';
+import { getAvatarUrl } from '../config/api';
+import ApiService from '../services/ApiService';
 
 const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [conversationType, setConversationType] = useState('direct'); // 'direct' or 'group'
-  const [groupLanguage, setGroupLanguage] = useState('en');
+  const [groupLanguage, setGroupLanguage] = useState('EN');
   const [groupName, setGroupName] = useState('');
   const { t } = useLanguage();
-
-  const filteredUsers = mockUsers.filter(user => 
-    user.id !== 1 && // Exclude current user
-    user.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const { currentUser } = useAuth();
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleUserSelect = (user) => {
+    // Convert API user format to internal format
+    const internalUser = {
+      id: user.userId,
+      name: user.fullName,
+      email: user.email,
+      avatar: user.avatarUrl,
+      locale: user.locale
+    };
+
     if (conversationType === 'direct') {
       // For direct conversation, select only one user
-      setSelectedUsers([user]);
+      setSelectedUsers([internalUser]);
     } else {
       // For group conversation, toggle user selection
-      const isSelected = selectedUsers.find(u => u.id === user.id);
+      const isSelected = selectedUsers.find(u => u.id === internalUser.id);
       if (isSelected) {
-        setSelectedUsers(selectedUsers.filter(u => u.id !== user.id));
+        setSelectedUsers(selectedUsers.filter(u => u.id !== internalUser.id));
       } else {
-        setSelectedUsers([...selectedUsers, user]);
+        setSelectedUsers([...selectedUsers, internalUser]);
       }
     }
   };
 
-  const handleCreateConversation = () => {
-    if (selectedUsers.length === 0) return;
+  const handleCreateConversation = async () => {
+    if (selectedUsers.length === 0 || isCreating) return;
 
-    const newConversation = {
-      id: Date.now(), // Generate temporary ID
-      type: conversationType,
-      participants: [1, ...selectedUsers.map(u => u.id)], // Include current user (ID 1)
-      name: conversationType === 'group' 
-        ? (groupName || `${t('newGroup')} ${selectedUsers.map(u => u.name).join(', ')}`)
-        : null,
-      language: conversationType === 'group' ? groupLanguage : null,
-      lastMessage: {
-        originalText: t('conversationStarted'),
-        timestamp: new Date().toISOString()
-      },
-      unreadCount: 0
-    };
+    try {
+      setIsCreating(true);
 
-    onCreateConversation(newConversation);
-    onClose();
-    setSelectedUsers([]);
-    setSearchTerm('');
-    setGroupName('');
-    setGroupLanguage('en');
+      if (conversationType === 'direct') {
+        const toUser = selectedUsers[0];
+        const apiResult = await ApiService.createDirectConversation(toUser.id);
+        const conversationId = apiResult.data?.conversationId;
+        if (!conversationId) throw new Error('No conversationId returned');
+
+        const newConversation = {
+          id: conversationId,
+          conversationId,
+          type: 'direct',
+          participants: [
+            {
+              userId: toUser.id,
+              fullName: toUser.name,
+              email: toUser.email,
+              avatarUrl: toUser.avatar,
+              locale: toUser.locale
+            }
+          ]
+        };
+
+        onCreateConversation(newConversation);
+      } else {
+        // Group
+        const selectedUserIds = selectedUsers.map(u => u.id);
+        const selfUserId = currentUser?.userId || currentUser?.id;
+        const allUserIds = Array.from(new Set([...(selectedUserIds || []), selfUserId].filter(Boolean)));
+        const selectedLocale = (groupLanguage || 'EN').toUpperCase();
+        const locale = selectedLocale;
+        const name = groupName && groupName.trim().length > 0
+          ? groupName.trim()
+          : `${t('newGroup')} ${selectedUsers.map(u => u.name).join(', ')}`;
+
+        const apiResult = await ApiService.createGroupConversation(allUserIds, name, locale);
+        const conversationId = apiResult.data?.conversationId;
+        if (!conversationId) throw new Error('No conversationId returned');
+
+        const newConversation = {
+          id: conversationId,
+          conversationId,
+          type: 'group',
+          name,
+          language: locale,
+          participants: [
+            // Include selected users
+            ...selectedUsers.map(u => ({
+              userId: u.id,
+              fullName: u.name,
+              email: u.email,
+              avatarUrl: u.avatar,
+              locale: u.locale
+            })),
+            // Include current user
+            ...(selfUserId ? [{
+              userId: selfUserId,
+              fullName: currentUser?.fullName || currentUser?.name || 'Me',
+              email: currentUser?.email || '',
+              avatarUrl: currentUser?.avatarUrl || currentUser?.avatar || null,
+              locale: currentUser?.locale || 'EN'
+            }] : [])
+          ]
+        };
+
+        onCreateConversation(newConversation);
+      }
+
+      onClose();
+      setSelectedUsers([]);
+      setGroupName('');
+      setGroupLanguage('EN');
+    } catch (error) {
+       
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
@@ -120,7 +185,7 @@ const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className=" block text-sm font-medium text-gray-700 mb-2">
                   Group Language
                 </label>
                 <AILanguageSelector
@@ -132,14 +197,11 @@ const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
           )}
 
           {/* Search */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder={t('searchUsers')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white text-gray-900"
+          <div className="mb-4">
+            <UserSearch
+              onUserSelect={handleUserSelect}
+              placeholder="Search by User ID or Email..."
+              className="w-full"
             />
           </div>
 
@@ -156,9 +218,12 @@ const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
                     className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
                   >
                     <img
-                      src={user.avatar}
+                      src={getAvatarUrl(user.avatar, 'user')}
                       alt={user.name}
                       className="w-5 h-5 rounded-full object-cover"
+                      onError={(e) => {
+                        e.target.src = getAvatarUrl(null, 'user');
+                      }}
                     />
                     <span>{user.name}</span>
                     <button
@@ -175,44 +240,41 @@ const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
 
           {/* Users List */}
           <div className="max-h-48 overflow-y-auto">
-            {filteredUsers.length === 0 ? (
-              <div className="text-center text-gray-500 py-4">
-                {t('noUsersFound')}
+            {selectedUsers.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p>Search and select users to start a conversation</p>
               </div>
             ) : (
-              filteredUsers.map(user => {
-                const isSelected = selectedUsers.find(u => u.id === user.id);
-                return (
-                  <div
-                    key={user.id}
-                    onClick={() => handleUserSelect(user)}
-                    className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-blue-50 border border-blue-200'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-900">
-                        {user.name}
-                      </h4>
-                      <p className="text-xs text-gray-500">
-                        {user.language}
-                      </p>
-                    </div>
-                    {isSelected && (
-                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                    )}
+              selectedUsers.map(user => (
+                <div
+                  key={user.id}
+                  className="flex items-center space-x-3 p-3 rounded-lg bg-blue-50 border border-blue-200"
+                >
+                  <img
+                    src={getAvatarUrl(user.avatar, 'user')}
+                    alt={user.name}
+                    className="w-10 h-10 rounded-full object-cover"
+                    onError={(e) => {
+                      e.target.src = getAvatarUrl(null, 'user');
+                    }}
+                  />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-gray-900">
+                      {user.name}
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      {user.email}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      ID: {user.id}
+                    </p>
                   </div>
-                );
-              })
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                    {user.locale}
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -227,10 +289,10 @@ const NewConversationModal = ({ isOpen, onClose, onCreateConversation }) => {
           </button>
           <button
             onClick={handleCreateConversation}
-            disabled={selectedUsers.length === 0}
+            disabled={selectedUsers.length === 0 || isCreating}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {t('create')}
+            {isCreating ? 'Creating…' : t('create')}
           </button>
         </div>
       </div>
